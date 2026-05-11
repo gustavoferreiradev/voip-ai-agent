@@ -3,43 +3,26 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # Obtenha seu token em: https://signalwire.com/freeswitch
-        # Deixe vazio para usar o mirror público (files.freeswitch.org)
-        SIGNALWIRE_TOKEN:
     container_name: voip-ai
     hostname: voip-ai
     restart: unless-stopped
-
-    # host mode evita NAT para SIP/RTP
     network_mode: host
-
-    env_file: app/.env # substitua por .env com as chaves reais
-
+    env_file: app/.env
     environment:
       TZ: America/Sao_Paulo
       NODE_ENV: production
-
+      FS_HOST: "127.0.0.1"
+      VM_IP: "10.197.3.242" # IP da VM com FS PBX
+      VM_USER: "ubuntu" # usuário SSH da VM Multipass
+      SSH_KEY: "/root/.ssh/multipass_key"
     volumes:
-      - freeswitch-conf:/etc/freeswitch
-      - freeswitch-data:/var/lib/freeswitch
-      - freeswitch-logs:/var/log/freeswitch
       - postgres-data:/var/lib/postgresql
       - app-logs:/app/logs
-      # Monte o código em dev para hot-reload:
-      # - ./app:/app
-
+      # Chave SSH do Multipass para o tunnel ESL
+      - /var/snap/multipass/common/data/multipassd/ssh-keys/id_rsa:/root/.ssh/multipass_key:ro
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
-      core: { soft: -1, hard: -1 }
-
-    cap_add:
-      - SYS_NICE
-      - NET_ADMIN
 
 volumes:
-  freeswitch-conf:
-  freeswitch-data:
-  freeswitch-logs:
   postgres-data:
   app-logs:

@@ -10,16 +10,18 @@ export function createApp({ esl, db, log }) {
         res.json({ status: 'ok', ts: new Date().toISOString() });
     });
 
-    // ── Originar chamada para ramal local (user/XXXX) ────────────
-    // POST /call { "destination": "9196", "callerId": "1000" }
-    // 9196 = echo test | 9664 = hold music | 9999 = FreeSWITCH info
+    // ── Originar chamada para ramal SIP registrado ──────────────
+    // POST /call { "destination": "1000", "callerId": "9999" }
     app.post('/call', async (req, res) => {
-        const { destination, callerId = '1000' } = req.body;
+        const { destination, callerId = '1000', sipIp } = req.body;
         if (!destination) {
             return res.status(400).json({ error: 'destination obrigatório' });
         }
         try {
-            const result = await esl.originate({ destination, callerId });
+            // Se sipIp fornecido, usa endpoint explícito (mais confiável com FS PBX)
+            const result = sipIp
+                ? await esl.originateSip({ destination, sipIp, callerId })
+                : await esl.originate({ destination, callerId });
             log.info({ destination, result }, 'Chamada originada');
             res.json({ status: 'originating', destination, result });
         } catch (err) {

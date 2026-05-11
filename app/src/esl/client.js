@@ -1,4 +1,3 @@
-// src/esl/client.js
 import pkg from 'modesl';
 const { Connection } = pkg;
 import { log } from '../logger.js';
@@ -63,12 +62,20 @@ export class ESLClient {
         });
     }
 
-    // Origina chamada para extensão do dialplan (ex: echo test 9196, hold 9664)
-    originate({ destination, callerId, context = 'default', timeout = 30 }) {
-        // Usa loopback para rotear pelo dialplan sem precisar de ramal registrado
-        const dialStr = `{origination_caller_id_number=${callerId},call_timeout=${timeout}}loopback/${destination}/${context}`;
+    // Origina chamada para ramal SIP registrado
+    originate({ destination, callerId, timeout = 30 }) {
+        // Usa user/<ramal> — o FreeSWITCH resolve pelo registro SIP ativo
+        const dialStr = `{origination_caller_id_number=${callerId},call_timeout=${timeout}}user/${destination}`;
         const cmd = `originate ${dialStr} &park()`;
-        log.info({ destination, callerId, context, cmd }, 'ESL: originando chamada');
+        log.info({ destination, callerId, cmd }, 'ESL: originando chamada');
+        return this.#bgapi(cmd);
+    }
+
+    // Origina chamada para endpoint SIP explícito (quando user/ falha)
+    originateSip({ destination, sipIp, callerId, timeout = 30 }) {
+        const dialStr = `{origination_caller_id_number=${callerId},call_timeout=${timeout}}sofia/internal/sip:${destination}@${sipIp}`;
+        const cmd = `originate ${dialStr} &park()`;
+        log.info({ destination, sipIp, callerId, cmd }, 'ESL: originando via SIP direto');
         return this.#bgapi(cmd);
     }
 
