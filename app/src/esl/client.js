@@ -1,3 +1,4 @@
+// src/esl/client.js
 import pkg from 'modesl';
 const { Connection } = pkg;
 import { log } from '../logger.js';
@@ -35,14 +36,8 @@ export class ESLClient {
                 log.info({ host, port }, 'ESL: conexão estabelecida');
                 this.#conn = conn;
 
-                // Subscreve eventos de canal
-                this.#conn.events('json',
-                    'CHANNEL_CREATE',
-                    'CHANNEL_ANSWER',
-                    'CHANNEL_DESTROY',
-                    'CHANNEL_HANGUP',
-                    'CUSTOM'
-                );
+                // Subscreve todos os eventos (mais confiável que listar individualmente)
+                this.#conn.events('json', 'all');
 
                 this.#conn.on('esl::event::CHANNEL_ANSWER::*', (evt) => this.#onAnswer(evt));
                 this.#conn.on('esl::event::CHANNEL_DESTROY::*', (evt) => this.#onDestroy(evt));
@@ -101,6 +96,17 @@ export class ESLClient {
     #bgapi(cmd) {
         return new Promise((resolve, reject) => {
             this.#conn.bgapi(cmd, (res) => {
+                const body = res?.getBody?.() ?? '';
+                if (body.startsWith('-ERR')) reject(new Error(body));
+                else resolve(body);
+            });
+        });
+    }
+
+    // Envia comando API direto (para uuid_audio_stream e outros)
+    rawApi(cmd) {
+        return new Promise((resolve, reject) => {
+            this.#conn.api(cmd, (res) => {
                 const body = res?.getBody?.() ?? '';
                 if (body.startsWith('-ERR')) reject(new Error(body));
                 else resolve(body);

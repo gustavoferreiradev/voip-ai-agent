@@ -19,7 +19,7 @@ services:
       - postgres-data:/var/lib/postgresql
       - app-logs:/app/logs
       # Chave SSH do Multipass para o tunnel ESL
-      - /var/snap/multipass/common/data/multipassd/ssh-keys/id_rsa:/root/.ssh/multipass_key:ro
+      - /var/snap/multipass/common/data/multipassd/ssh-keys/id_rsa:/root/.ssh/multipass_key
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
 

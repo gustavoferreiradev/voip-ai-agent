@@ -4,6 +4,7 @@ import { log } from './logger.js';
 import { createApp } from './server.js';
 import { ESLClient } from './esl/client.js';
 import { db } from './db/index.js';
+import { startAudioServer } from './media/audio-server.js';
 
 async function main() {
     log.info('Iniciando VoIP AI Agent...');
@@ -21,6 +22,11 @@ async function main() {
     });
     await esl.connect();
     log.info('Conectado ao FreeSWITCH via ESL.');
+
+    // ── Servidor WebSocket de áudio (mod_audio_stream) ──────────
+    const audioPort = Number(process.env.AUDIO_WS_PORT ?? 8090);
+    startAudioServer({ port: audioPort, esl });
+    log.info({ port: audioPort }, 'AudioServer iniciado.');
 
     // ── HTTP server ─────────────────────────────────────────────
     const app = createApp({ esl, db, log });

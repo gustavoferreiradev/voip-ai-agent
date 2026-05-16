@@ -43,6 +43,9 @@ if [ -n "$VM_IP" ]; then
     sleep 3
   done
 
+  # Corrige permissão da chave SSH (Docker monta com 644, SSH exige 600)
+  chmod 600 "$SSH_KEY" 2>/dev/null || true
+
   # Cria o tunnel em background
   ssh -i "$SSH_KEY" \
       -L "${FS_ESL_PORT}:127.0.0.1:${FS_ESL_PORT}" \

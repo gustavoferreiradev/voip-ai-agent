@@ -1,23 +1,14 @@
 // src/esl/call-handler.js
-// Orquestra o ciclo completo de uma chamada:
-//   áudio PCM → Deepgram (STT) → GPT-4o → TTS → playback no FreeSWITCH
-import { DeepgramStreamer } from '../stt/deepgram.js';
-import { askGPT } from '../llm/openai.js';
-import { synthesize } from '../tts/tts.js';
+// Orquestra o fluxo de uma chamada:
+// 1. Atende o canal (answer)
+// 2. Ativa mod_audio_stream → WebSocket no Node.js
+// 3. O AudioServer recebe o áudio e aciona Deepgram → GPT → TTS → playback
 import { log } from '../logger.js';
-import path from 'node:path';
-import os from 'node:os';
-import fs from 'node:fs/promises';
-
-// Caminho onde gravamos áudio temporário para playback
-const TMP = os.tmpdir();
 
 export class CallHandler {
     #uuid;
     #esl;
-    #stt = null;
     #running = false;
-    #history = [];   // histórico de mensagens para o GPT
 
     constructor({ uuid, esl }) {
         this.#uuid = uuid;
@@ -26,77 +17,45 @@ export class CallHandler {
 
     async start() {
         this.#running = true;
-        log.info({ uuid: this.#uuid }, 'CallHandler: início');
+        const uuid = this.#uuid;
+        log.info({ uuid }, 'CallHandler: iniciando');
 
-        // 1. Ativa captura de áudio via mod_audio_stream ou uuid_record
-        //    Aqui usamos uuid_record para gravar em tempo real e processar.
-        //    Em produção, use mod_audio_stream para streaming direto ao Node.
-        const recPath = path.join(TMP, `${this.#uuid}.wav`);
-        await this.#esl.execute(this.#uuid, 'record', `${recPath} 10 200 5`);
+        // IP do Node.js acessível pelo FreeSWITCH
+        // Em produção: IP real do servidor Node
+        // Em dev com Multipass: IP do host (gateway da VM)
+        const nodeIp = process.env.NODE_IP ?? '10.197.3.1';
+        const audioPort = process.env.AUDIO_WS_PORT ?? '8090';
+        const wsUrl = `ws://${nodeIp}:${audioPort}/?uuid=${uuid}`;
 
-        // 2. Inicia streamer Deepgram (WebSocket)
-        this.#stt = new DeepgramStreamer({
-            onTranscript: (text) => this.#onTranscript(text),
-            onError: (err) => log.error({ uuid: this.#uuid, err }, 'Deepgram erro'),
-        });
-        await this.#stt.start();
+        try {
+            // 1. Atende a chamada (sai do park)
+            log.info({ uuid }, 'CallHandler: atendendo chamada');
+            await this.#esl.execute(uuid, 'answer');
 
-        // 3. Alimenta o Deepgram com o áudio gravado em loop
-        //    (em produção substitua pelo pipe direto do mod_audio_stream)
-        this.#pipeAudio(recPath);
-    }
+            // 2. Pequena pausa para o canal estabilizar
+            await sleep(500);
 
-    async #pipeAudio(recPath) {
-        // Aguarda o arquivo existir
-        let waited = 0;
-        while (waited < 5000) {
-            try { await fs.access(recPath); break; } catch { /* aguarda */ }
-            await sleep(200);
-            waited += 200;
+            // 3. Ativa o streaming de áudio para o AudioServer via mod_audio_stream
+            //    Formato: uuid_audio_stream <uuid> start <ws-url> <mix-type> <sample-rate>
+            //    mono     = apenas o áudio do chamador (recomendado para STT)
+            //    both     = áudio de ambos os lados misturado
+            //    8k       = 8000 Hz (padrão VoIP — compatível com Deepgram linear16)
+            log.info({ uuid, wsUrl }, 'CallHandler: ativando mod_audio_stream');
+            await this.#esl.rawApi(`uuid_audio_stream ${uuid} start ${wsUrl} mono 8k`);
+            log.info({ uuid }, 'CallHandler: streaming de áudio ativo');
+
+        } catch (err) {
+            log.error({ uuid, err }, 'CallHandler: erro ao iniciar');
         }
-
-        // Lê e envia chunks em tempo real
-        let offset = 0;
-        while (this.#running) {
-            try {
-                const stat = await fs.stat(recPath);
-                if (stat.size > offset) {
-                    const fh = await fs.open(recPath, 'r');
-                    const chunk = Buffer.alloc(stat.size - offset);
-                    await fh.read(chunk, 0, chunk.length, offset);
-                    await fh.close();
-                    offset = stat.size;
-                    this.#stt.send(chunk);
-                }
-            } catch { /* arquivo pode ainda não existir */ }
-            await sleep(100);
-        }
-    }
-
-    async #onTranscript(text) {
-        if (!text?.trim()) return;
-        log.info({ uuid: this.#uuid, text }, 'Transcrição recebida');
-
-        // Acumula histórico para contexto multi-turn
-        this.#history.push({ role: 'user', content: text });
-
-        // 4. Envia para GPT-4o
-        const reply = await askGPT(this.#history);
-        this.#history.push({ role: 'assistant', content: reply });
-        log.info({ uuid: this.#uuid, reply }, 'GPT-4o respondeu');
-
-        // 5. Converte resposta em áudio (TTS)
-        const audioPath = await synthesize(reply, this.#uuid);
-
-        // 6. Faz playback no FreeSWITCH
-        await this.#esl.execute(this.#uuid, 'playback', audioPath);
-        log.info({ uuid: this.#uuid }, 'Playback executado');
     }
 
     stop() {
         this.#running = false;
-        this.#stt?.close();
-        log.info({ uuid: this.#uuid }, 'CallHandler: encerrado');
+        const uuid = this.#uuid;
+
+        // Para o streaming de áudio
+        this.#esl.rawApi(`uuid_audio_stream ${uuid} stop`).catch(() => { });
+        log.info({ uuid }, 'CallHandler: encerrado');
     }
 }
 
