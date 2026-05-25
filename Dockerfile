@@ -1,52 +1,52 @@
 # ============================================================
-# Dockerfile – Node.js VoIP/AI Agent
-# Base  : debian:12.10
-# Stack : Node.js 20 LTS + PostgreSQL (CDRs/transcrições)
-# FreeSWITCH roda na VM com FS PBX — conecta via ESL remoto
+# Dockerfile — VoIP AI Agent
+# Base  : node:24-slim (Debian Trixie)
+# Stack : Node.js 24 LTS + TypeScript + PostgreSQL + ffmpeg
 # ============================================================
-FROM debian:12.10
+FROM node:24-bookworm-slim
 
 LABEL maintainer="voip-ai-lab"
-LABEL description="Node.js AI Agent — conecta ao FS PBX via ESL remoto"
+LABEL description="VoIP AI Agent — Node 24 + TS + FreeSWITCH ESL + Deepgram + GPT-4o"
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Sao_Paulo
-ENV NODE_ENV=production
+# NODE_ENV é definido após o build para não bloquear devDependencies durante a compilação
 
 EXPOSE 3000/tcp
+EXPOSE 8090/tcp
 
-# ── 1. Dependências base ─────────────────────────────────────
+# ── 1. Dependências do sistema ───────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl wget ca-certificates gnupg2 \
-    build-essential git \
-    procps net-tools \
+    ffmpeg \
+    postgresql-client \
+    postgresql \
     openssh-client \
-    tzdata locales ffmpeg \
-    postgresql postgresql-client \
+    curl \
+    ca-certificates \
+    tzdata \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo $TZ > /etc/timezone \
-    && sed -i 's/^# *\(pt_BR.UTF-8\)/\1/' /etc/locale.gen \
-    && sed -i 's/^# *\(en_US.UTF-8\)/\1/' /etc/locale.gen \
-    && locale-gen \
-    && echo 'LANG=pt_BR.UTF-8'   >  /etc/default/locale \
-    && echo 'LANGUAGE=pt_BR:pt'  >> /etc/default/locale \
-    && echo 'LC_ALL=pt_BR.UTF-8' >> /etc/default/locale \
     && rm -rf /var/lib/apt/lists/*
 
-ENV LANG=pt_BR.UTF-8 LANGUAGE=pt_BR:pt LC_ALL=pt_BR.UTF-8
-
-# ── 2. Node.js 20 LTS ────────────────────────────────────────
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y --no-install-recommends nodejs \
-    && npm install -g npm@latest \
-    && node -v && npm -v \
-    && rm -rf /var/lib/apt/lists/*
-
-# ── 3. Aplicação Node.js ──────────────────────────────────────
+# ── 2. Instala todas as dependências (prod + dev para build) ─
 WORKDIR /app
 COPY app/package*.json ./
-RUN npm install --omit=dev --no-audit --no-fund
-COPY app/ ./
+RUN npm install --no-audit --no-fund
+
+# ── 3. Lint + Build TypeScript ────────────────────────────────
+COPY app/tsconfig.json ./
+COPY app/biome.json    ./
+COPY app/src           ./src
+
+# Lint antes de compilar — falha o build se houver erros
+RUN ./node_modules/.bin/biome check ./src
+RUN ./node_modules/.bin/tsc
+
+# Remove devDependencies após o build
+RUN npm prune --omit=dev
+
+# Define NODE_ENV=production apenas em runtime
+ENV NODE_ENV=production
 
 # ── 4. Entrypoint ─────────────────────────────────────────────
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

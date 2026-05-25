@@ -7,19 +7,24 @@ services:
     hostname: voip-ai
     restart: unless-stopped
     network_mode: host
-    env_file: app/.env
+
+    # Node 24 carrega .env nativamente — sem dotenv
+    # O arquivo .env é montado como volume para facilitar updates sem rebuild
+    volumes:
+      - ./app/.env:/app/.env:ro
+      - postgres-data:/var/lib/postgresql
+      - app-logs:/app/logs
+      # Chave SSH do Multipass para o tunnel ESL automático
+      - /var/snap/multipass/common/data/multipassd/ssh-keys/id_rsa:/root/.ssh/multipass_key
+
     environment:
       TZ: America/Sao_Paulo
       NODE_ENV: production
-      FS_HOST: "127.0.0.1"
+      FS_HOST: "127.0.0.1" # ESL via tunnel SSH
       VM_IP: "10.197.3.242" # IP da VM com FS PBX
       VM_USER: "ubuntu" # usuário SSH da VM Multipass
       SSH_KEY: "/root/.ssh/multipass_key"
-    volumes:
-      - postgres-data:/var/lib/postgresql
-      - app-logs:/app/logs
-      # Chave SSH do Multipass para o tunnel ESL
-      - /var/snap/multipass/common/data/multipassd/ssh-keys/id_rsa:/root/.ssh/multipass_key
+
     ulimits:
       nofile: { soft: 65536, hard: 65536 }
 

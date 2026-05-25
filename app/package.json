@@ -1,22 +1,36 @@
 {
-    "name": "voip-ai-agent",
-    "version": "1.0.0",
-    "description": "FreeSWITCH ESL + Deepgram STT + OpenAI GPT-4o VoIP agent",
-    "main": "src/index.js",
-    "type": "module",
-    "scripts": {
-        "start": "node src/index.js",
-        "dev": "node --watch src/index.js"
-    },
-    "dependencies": {
-        "modesl": "^1.1.0",
-        "@deepgram/sdk": "^3.3.0",
-        "openai": "^4.47.0",
-        "pg": "^8.12.0",
-        "express": "^4.19.2",
-        "ws": "^8.17.1",
-        "dotenv": "^16.4.5",
-        "pino": "^9.3.2",
-        "pino-pretty": "^11.2.1"
-    }
+  "name": "voip-ai-agent",
+  "version": "2.0.0",
+  "description": "VoIP AI Agent — FreeSWITCH ESL + Deepgram + GPT-4o",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node --env-file=.env dist/index.js",
+    "dev": "tsc --watch & node --env-file=.env --watch dist/index.js",
+    "lint": "biome lint ./src",
+    "format": "biome format ./src",
+    "check": "biome check ./src"
+  },
+  "dependencies": {
+    "@deepgram/sdk": "^3.3.0",
+    "modesl": "^1.1.0",
+    "openai": "^4.47.0",
+    "pg": "^8.12.0",
+    "ws": "^8.17.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/pg": "^8.11.6",
+    "@types/ws": "^8.5.12",
+    "typescript": "^5.5.0",
+    "@biomejs/biome": "^1.8.0"
+  },
+  "optionalDependencies": {
+    "@biomejs/biome-linux-x64": "1.8.0",
+    "@biomejs/biome-linux-arm64": "1.8.0",
+    "@biomejs/biome-darwin-x64": "1.8.0",
+    "@biomejs/biome-darwin-arm64": "1.8.0",
+    "@biomejs/biome-win32-x64": "1.8.0"
+  }
 }
